@@ -173,7 +173,7 @@ def main():
     
     if not sindicompany_filtered.empty:
         # Métricas principais Sindicompany
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             total_sessions_sindi = len(sindicompany_filtered)
@@ -195,6 +195,20 @@ def main():
                 st.metric("Duração Média", f"{hours:02d}:{minutes:02d}:{seconds:02d}")
             else:
                 st.metric("Duração Média", "N/A")
+        
+        with col4:
+            # Calcular tempo de espera usando __sessionQueueDuration
+            if '__sessionQueueDuration' in sindicompany_filtered.columns:
+                avg_queue_duration = sindicompany_filtered['__sessionQueueDuration'].mean()
+                if pd.notna(avg_queue_duration) and avg_queue_duration > 0:
+                    hours = int(avg_queue_duration // 3600)
+                    minutes = int((avg_queue_duration % 3600) // 60)
+                    seconds = int(avg_queue_duration % 60)
+                    st.metric("Tempo de Espera Médio", f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+                else:
+                    st.metric("Tempo de Espera Médio", "N/A")
+            else:
+                st.metric("Tempo de Espera Médio", "N/A")
         
         # Gráficos Sindicompany
         col1, col2 = st.columns(2)
@@ -235,16 +249,17 @@ def main():
         if 'pluginConnectionLabel' in sindicompany_filtered.columns:
             st.subheader("👥 Operadores Sindicompany")
             
-            # Contar sessões por operador
+            # Contar sessões por operador incluindo tempo de espera
             operator_sessions = sindicompany_filtered.groupby('pluginConnectionLabel').agg({
                 'sessionID': 'count',
                 '__sessionDuration': 'mean',
+                '__sessionQueueDuration': 'mean',
                 '__sessionMessagesCount': 'mean'
             }).round(2)
             
             # Formatação da duração média em HH:MM:SS
             def format_duration(seconds):
-                if pd.isna(seconds):
+                if pd.isna(seconds) or seconds <= 0:
                     return "N/A"
                 hours = int(seconds // 3600)
                 minutes = int((seconds % 3600) // 60)
@@ -252,31 +267,70 @@ def main():
                 return f"{hours:02d}:{minutes:02d}:{secs:02d}"
             
             operator_sessions['Duração Média'] = operator_sessions['__sessionDuration'].apply(format_duration)
-            operator_sessions = operator_sessions[['sessionID', 'Duração Média', '__sessionMessagesCount']]
-            operator_sessions.columns = ['Total de Sessões', 'Duração Média', 'Mensagens Média']
+            operator_sessions['Tempo de Espera Médio'] = operator_sessions['__sessionQueueDuration'].apply(format_duration)
+            operator_sessions = operator_sessions[['sessionID', 'Duração Média', 'Tempo de Espera Médio', '__sessionMessagesCount']]
+            operator_sessions.columns = ['Total de Sessões', 'Duração Média', 'Tempo de Espera Médio', 'Mensagens Média']
             operator_sessions = operator_sessions.sort_values('Total de Sessões', ascending=False)
             
-            # Layout em colunas
-            col1, col2 = st.columns([1, 1])
-            
-            with col1:
-                # Gráfico de pizza dos operadores
-                if len(operator_sessions) > 0:
-                    fig_operators = px.pie(
-                        values=operator_sessions['Total de Sessões'],
-                        names=operator_sessions.index,
-                        title="Distribuição de Sessões por Operador"
-                    )
-                    fig_operators.update_layout(height=400)
-                    st.plotly_chart(fig_operators, use_container_width=True)
-            
-            with col2:
-                # Tabela de operadores
-                st.markdown("**Detalhes dos Operadores:**")
-                st.dataframe(
-                    operator_sessions,
-                    use_container_width=True
+            # Gráfico de pizza dos operadores
+            if len(operator_sessions) > 0:
+                fig_operators = px.pie(
+                    values=operator_sessions['Total de Sessões'],
+                    names=operator_sessions.index,
+                    title="Distribuição de Sessões por Operador"
                 )
+                fig_operators.update_layout(height=400)
+                st.plotly_chart(fig_operators, use_container_width=True)
+            
+            # Tabela de operadores em linha separada
+            st.markdown("**Detalhes dos Operadores:**")
+            
+            # Configurar formatação da tabela com alinhamento à direita para colunas numéricas
+            styled_table = operator_sessions.style.set_properties(**{
+                'text-align': 'right'
+            }, subset=['Duração Média', 'Tempo de Espera Médio']).set_properties(**{
+                'text-align': 'center'
+            }, subset=['Total de Sessões', 'Mensagens Média']).format({
+                'Mensagens Média': '{:.2f}'
+            })
+            
+            st.dataframe(
+                styled_table,
+                use_container_width=True
+            )
+        
+        # Nova tabela: Sessões por dia do mês por operador
+        if 'date' in sindicompany_filtered.columns and 'pluginConnectionLabel' in sindicompany_filtered.columns:
+            st.subheader("📅 Sessões por Dia do Mês por Operador")
+            
+            # Criar cópia dos dados para evitar warnings
+            temp_data = sindicompany_filtered.copy()
+            temp_data['day'] = temp_data['date'].apply(lambda x: x.day)
+            
+            daily_operator_sessions = temp_data.groupby(['day', 'pluginConnectionLabel']).size().reset_index(name='sessions')
+            
+            # Criar pivot table
+            pivot_table = daily_operator_sessions.pivot(index='day', columns='pluginConnectionLabel', values='sessions').fillna(0).astype(int)
+            
+            # Criar tabela de totais separadamente
+            totals = pivot_table.sum()
+            
+            # Mostrar a tabela principal
+            st.dataframe(
+                pivot_table,
+                use_container_width=True
+            )
+            
+            # Mostrar totais em uma linha separada
+            st.subheader("📊 Total de Sessões por Operador")
+            totals_df = pd.DataFrame([totals], index=['Total'])
+            st.dataframe(
+                totals_df,
+                use_container_width=True
+            )
+            
+            # Informações adicionais
+            st.caption(f"📊 Tabela mostra o número de sessões por dia do mês para cada operador.")
         
         # Análise por dia da semana
         if 'weekday' in sindicompany_filtered.columns:
