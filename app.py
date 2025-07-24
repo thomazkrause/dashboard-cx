@@ -302,24 +302,7 @@ def main():
                 # Contar sessões únicas por pluginConnectionLabel
                 plugin_sessions = sessions_plugins_filtered.groupby('pluginConnectionLabel')['sessionID'].nunique().reset_index()
                 plugin_sessions.columns = ['Plugin Connection Label', 'Número de Sessões']
-                plugin_sessions = plugin_sessions.sort_values('Número de Sessões', ascending=True)  # Crescente para gráfico horizontal
-                
-                # Gráfico de barras horizontal para melhor visualização dos labels
-                fig_plugin = px.bar(
-                    plugin_sessions,
-                    x='Número de Sessões',
-                    y='Plugin Connection Label',
-                    orientation='h',
-                    title="Quantidade de Sessões Únicas por Plugin Connection Label",
-                    labels={'Número de Sessões': 'Número de Sessões', 'Plugin Connection Label': 'Plugin Connection Label'},
-                    color='Número de Sessões',
-                    color_continuous_scale='viridis'
-                )
-                fig_plugin.update_layout(
-                    height=max(400, len(plugin_sessions) * 25),  # Altura dinâmica baseada no número de items
-                    yaxis={'categoryorder': 'total ascending'}
-                )
-                st.plotly_chart(fig_plugin, use_container_width=True)
+                plugin_sessions = plugin_sessions.sort_values('Número de Sessões', ascending=False)
                 
                 # Mostrar estatísticas
                 col1, col2, col3 = st.columns(3)
@@ -334,15 +317,15 @@ def main():
                 
                 with col3:
                     if not plugin_sessions.empty:
-                        most_active = plugin_sessions.iloc[-1]  # Último item (maior valor)
+                        most_active = plugin_sessions.iloc[0]  # Primeiro item (maior valor após sort desc)
                         st.metric("Plugin Mais Ativo", f"{most_active['Número de Sessões']:,}")
                         st.caption(f"📋 {most_active['Plugin Connection Label'][:30]}{'...' if len(most_active['Plugin Connection Label']) > 30 else ''}")
                 
                 # Tabela simples com contagem de sessões
                 st.subheader("📋 Tabela de Sessões por Plugin")
                 
-                # Ordenar tabela por número de sessões (decrescente para facilitar leitura)
-                plugin_sessions_table = plugin_sessions.sort_values('Número de Sessões', ascending=False)
+                # Usar dados já ordenados
+                plugin_sessions_table = plugin_sessions
                 
                 # Adicionar coluna de percentual
                 plugin_sessions_table['Percentual'] = (plugin_sessions_table['Número de Sessões'] / plugin_sessions_table['Número de Sessões'].sum() * 100).round(2)
