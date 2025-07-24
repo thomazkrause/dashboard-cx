@@ -114,7 +114,6 @@ dashboard-cx/
 #### 🚀 URL do App
 Após o deploy, sua aplicação estará disponível em:
 `https://seu-usuario-dashboard-cx-app-streamlit-app.streamlit.app/`
-
 ## 📋 Requisitos
 
 - Python 3.7+
