@@ -51,7 +51,25 @@ def load_data():
         else:
             sessions_plugins = pd.DataFrame()
         
-        return messages, sessions_plugins
+        # Carregar dados Sindicompany
+        sindicompany_file = "data/[ Talqui ] Sindicompany - Data_Julho_15-22.csv"
+        if os.path.exists(sindicompany_file):
+            sindicompany = pd.read_csv(sindicompany_file, low_memory=False)
+            # Converter datas
+            date_columns = ['queuedAt', 'manualAt', 'closedAt', 'createdAt', 'updatedAt', 'sessionRatingAt']
+            for col in date_columns:
+                if col in sindicompany.columns:
+                    sindicompany[col] = pd.to_datetime(sindicompany[col], errors='coerce')
+            
+            # Adicionar colunas derivadas
+            if 'createdAt' in sindicompany.columns:
+                sindicompany['date'] = sindicompany['createdAt'].dt.date
+                sindicompany['hour'] = sindicompany['createdAt'].dt.hour
+                sindicompany['weekday'] = sindicompany['createdAt'].dt.day_name()
+        else:
+            sindicompany = pd.DataFrame()
+        
+        return messages, sessions_plugins, sindicompany
     
     except Exception as e:
         st.error(f"Erro ao carregar dados: {str(e)}")
@@ -60,8 +78,9 @@ def load_data():
         **Arquivos necessários:**
         - `data/2025-07-20T11_47_45+00_00_wa7m.csv` (mensagens)
         - `data/2025-07-20T11_48_28+00_00_ry7w.csv` (sessões com plugins)
+        - `data/[ Talqui ] Sindicompany - Data_Julho_15-22.csv` (dados Sindicompany)
         """)
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 def main():
     st.title("📊 Dashboard CX - Talqui")
@@ -69,9 +88,9 @@ def main():
     
     # Carregar dados
     with st.spinner("Carregando dados..."):
-        messages, sessions_plugins = load_data()
+        messages, sessions_plugins, sindicompany = load_data()
     
-    if messages.empty:
+    if messages.empty and sindicompany.empty:
         st.error("Não foi possível carregar os dados. Verifique se os arquivos CSV estão no diretório 'data/'")
         return
     
@@ -168,9 +187,10 @@ def main():
             st.metric("Contatos Únicos", "N/A")
     
     # Tabs para análises
-    tab1, tab2 = st.tabs([
+    tab1, tab2, tab3 = st.tabs([
         "📈 Volume de Mensagens",
-        "📊 Sessões"
+        "📊 Sessões",
+        "🏢 Sindicompany"
     ])
     
     with tab1:
@@ -343,6 +363,147 @@ def main():
             
         else:
             st.error("❌ Dados de sessionID não disponíveis")
+    
+    with tab3:
+        st.header("🏢 Análise Sindicompany")
+        
+        if not sindicompany.empty:
+            # Métricas principais Sindicompany
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                total_sessions_sindi = len(sindicompany)
+                st.metric("Total de Sessões", f"{total_sessions_sindi:,}")
+            
+            with col2:
+                if 'contactID' in sindicompany.columns:
+                    unique_contacts_sindi = sindicompany['contactID'].nunique()
+                    st.metric("Contatos Únicos", f"{unique_contacts_sindi:,}")
+                else:
+                    st.metric("Contatos Únicos", "N/A")
+            
+            with col3:
+                if 'sessionRatingStars' in sindicompany.columns:
+                    avg_rating = sindicompany['sessionRatingStars'].mean()
+                    st.metric("Avaliação Média", f"{avg_rating:.1f}⭐" if avg_rating > 0 else "N/A")
+                else:
+                    st.metric("Avaliação Média", "N/A")
+            
+            with col4:
+                if '__sessionDuration' in sindicompany.columns:
+                    avg_duration = sindicompany['__sessionDuration'].mean() / 60  # converter para minutos
+                    st.metric("Duração Média", f"{avg_duration:.1f} min")
+                else:
+                    st.metric("Duração Média", "N/A")
+            
+            # Gráficos Sindicompany
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Sessões por dia
+                if 'date' in sindicompany.columns:
+                    daily_sessions_sindi = sindicompany.groupby('date').size().reset_index(name='count')
+                    fig_daily_sindi = px.line(
+                        daily_sessions_sindi, 
+                        x='date', 
+                        y='count',
+                        title="Sessões Sindicompany por Dia",
+                        labels={'count': 'Número de Sessões', 'date': 'Data'}
+                    )
+                    fig_daily_sindi.update_layout(height=400)
+                    st.plotly_chart(fig_daily_sindi, use_container_width=True)
+                else:
+                    st.info("Dados de data não disponíveis")
+            
+            with col2:
+                # Motivos de fechamento
+                if 'closeMotive' in sindicompany.columns:
+                    close_motives = sindicompany['closeMotive'].value_counts()
+                    fig_motives = px.pie(
+                        values=close_motives.values,
+                        names=close_motives.index,
+                        title="Motivos de Fechamento"
+                    )
+                    fig_motives.update_layout(height=400)
+                    st.plotly_chart(fig_motives, use_container_width=True)
+                else:
+                    st.info("Dados de motivos de fechamento não disponíveis")
+            
+            # Análise de operadores
+            if 'pluginConnectionLabel' in sindicompany.columns:
+                st.subheader("👥 Operadores Sindicompany")
+                
+                # Contar sessões por operador
+                operator_sessions = sindicompany.groupby('pluginConnectionLabel').agg({
+                    'sessionID': 'count',
+                    '__sessionDuration': 'mean',
+                    'sessionRatingStars': 'mean',
+                    '__sessionMessagesCount': 'mean'
+                }).round(2)
+                
+                operator_sessions.columns = ['Total de Sessões', 'Duração Média (seg)', 'Avaliação Média', 'Mensagens Média']
+                operator_sessions = operator_sessions.sort_values('Total de Sessões', ascending=False)
+                
+                # Mostrar tabela de operadores
+                st.dataframe(
+                    operator_sessions,
+                    use_container_width=True
+                )
+                
+                # Gráfico de performance dos operadores
+                if len(operator_sessions) > 1:
+                    fig_operators = px.bar(
+                        x=operator_sessions.index,
+                        y=operator_sessions['Total de Sessões'],
+                        title="Sessões por Operador",
+                        labels={'x': 'Operador', 'y': 'Total de Sessões'}
+                    )
+                    fig_operators.update_layout(height=400)
+                    fig_operators.update_xaxes(tickangle=45)
+                    st.plotly_chart(fig_operators, use_container_width=True)
+            
+            # Análise temporal detalhada
+            if 'hour' in sindicompany.columns:
+                st.subheader("⏰ Análise Temporal")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Sessões por hora
+                    hourly_sessions_sindi = sindicompany.groupby('hour').size().reset_index(name='count')
+                    fig_hourly_sindi = px.bar(
+                        hourly_sessions_sindi,
+                        x='hour',
+                        y='count',
+                        title="Sessões por Hora do Dia",
+                        labels={'count': 'Número de Sessões', 'hour': 'Hora'}
+                    )
+                    fig_hourly_sindi.update_layout(height=400)
+                    st.plotly_chart(fig_hourly_sindi, use_container_width=True)
+                
+                with col2:
+                    # Sessões por dia da semana
+                    if 'weekday' in sindicompany.columns:
+                        weekday_sessions_sindi = sindicompany.groupby('weekday').size().reindex([
+                            'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+                        ]).reset_index(name='count')
+                        weekday_sessions_sindi['weekday_pt'] = weekday_sessions_sindi['weekday'].map({
+                            'Monday': 'Segunda', 'Tuesday': 'Terça', 'Wednesday': 'Quarta',
+                            'Thursday': 'Quinta', 'Friday': 'Sexta', 'Saturday': 'Sábado', 'Sunday': 'Domingo'
+                        })
+                        
+                        fig_weekday_sindi = px.bar(
+                            weekday_sessions_sindi,
+                            x='weekday_pt',
+                            y='count',
+                            title="Sessões por Dia da Semana",
+                            labels={'count': 'Número de Sessões', 'weekday_pt': 'Dia da Semana'}
+                        )
+                        fig_weekday_sindi.update_layout(height=400)
+                        st.plotly_chart(fig_weekday_sindi, use_container_width=True)
+        
+        else:
+            st.info("📋 Dados Sindicompany não disponíveis")
     
     # Footer
     st.markdown("---")
