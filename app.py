@@ -245,11 +245,11 @@ def main():
             else:
                 st.info("Dados de hora não disponíveis")
         
-        # Análise de operadores
+        # Análise de sindícos
         if 'pluginConnectionLabel' in sindicompany_filtered.columns:
-            st.subheader("👥 Operadores Sindicompany")
+            st.subheader("👥 Sindícos Sindicompany")
             
-            # Contar sessões por operador incluindo tempo de espera
+            # Contar sessões por síndico incluindo tempo de espera
             operator_sessions = sindicompany_filtered.groupby('pluginConnectionLabel').agg({
                 'sessionID': 'count',
                 '__sessionDuration': 'mean',
@@ -272,18 +272,18 @@ def main():
             operator_sessions.columns = ['Total de Sessões', 'Duração Média', 'Tempo de Espera Médio', 'Mensagens Média']
             operator_sessions = operator_sessions.sort_values('Total de Sessões', ascending=False)
             
-            # Gráfico de pizza dos operadores
+            # Gráfico de pizza dos sindícos
             if len(operator_sessions) > 0:
                 fig_operators = px.pie(
                     values=operator_sessions['Total de Sessões'],
                     names=operator_sessions.index,
-                    title="Distribuição de Sessões por Operador"
+                    title="Distribuição de Sessões por Síndico"
                 )
                 fig_operators.update_layout(height=400)
                 st.plotly_chart(fig_operators, use_container_width=True)
             
-            # Tabela de operadores em linha separada
-            st.markdown("**Detalhes dos Operadores:**")
+            # Tabela de sindícos em linha separada
+            st.markdown("**Detalhes dos Sindícos:**")
             
             # Configurar formatação da tabela com alinhamento à direita para colunas numéricas
             styled_table = operator_sessions.style.set_properties(**{
@@ -299,9 +299,9 @@ def main():
                 use_container_width=True
             )
         
-        # Nova tabela: Sessões por dia do mês por operador
+        # Nova tabela: Sessões por dia do mês por síndico
         if 'date' in sindicompany_filtered.columns and 'pluginConnectionLabel' in sindicompany_filtered.columns:
-            st.subheader("📅 Sessões por Dia do Mês por Operador")
+            st.subheader("📅 Sessões por Dia do Mês por Síndico")
             
             # Criar cópia dos dados para evitar warnings
             temp_data = sindicompany_filtered.copy()
@@ -322,7 +322,7 @@ def main():
             )
             
             # Mostrar totais em uma linha separada
-            st.subheader("📊 Total de Sessões por Operador")
+            st.subheader("📊 Total de Sessões por Síndico")
             totals_df = pd.DataFrame([totals], index=['Total'])
             st.dataframe(
                 totals_df,
@@ -330,7 +330,7 @@ def main():
             )
             
             # Informações adicionais
-            st.caption(f"📊 Tabela mostra o número de sessões por dia do mês para cada operador.")
+            st.caption(f"📊 Tabela mostra o número de sessões por dia do mês para cada síndico.")
         
         # Análise por dia da semana
         if 'weekday' in sindicompany_filtered.columns:
