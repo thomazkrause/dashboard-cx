@@ -84,7 +84,6 @@ def load_data():
 
 def main():
     st.title("📊 Dashboard CX - Talqui")
-    st.markdown("Dashboard para análise de dados de Customer Experience")
     
     # Carregar dados
     with st.spinner("Carregando dados..."):
@@ -93,98 +92,6 @@ def main():
     if messages.empty and sindicompany.empty:
         st.error("Não foi possível carregar os dados. Verifique se os arquivos CSV estão no diretório 'data/'")
         return
-    
-    # Sidebar com filtros
-    st.sidebar.header("📅 Filtros")
-    
-    # Filtro de data
-    if not messages.empty:
-        min_date = messages['createdAt'].min().date()
-        max_date = messages['createdAt'].max().date()
-        today = datetime.now().date()
-        
-        # Filtros predefinidos
-        filter_options = {
-            "Personalizado": None,
-            "Hoje": (today, today),
-            "Ontem": (today - timedelta(days=1), today - timedelta(days=1)),
-            "Últimos 7 dias": (today - timedelta(days=6), today),
-            "Esta semana": (today - timedelta(days=today.weekday()), today),
-            "Semana passada": (today - timedelta(days=today.weekday() + 7), today - timedelta(days=today.weekday() + 1)),
-            "Últimos 30 dias": (today - timedelta(days=29), today),
-            "Este mês": (today.replace(day=1), today),
-            "Mês passado": ((today.replace(day=1) - timedelta(days=1)).replace(day=1), today.replace(day=1) - timedelta(days=1)),
-            "Últimos 90 dias": (today - timedelta(days=89), today),
-            "Todo o período": (min_date, max_date)
-        }
-        
-        selected_filter = st.sidebar.selectbox(
-            "Período rápido:",
-            options=list(filter_options.keys()),
-            index=len(filter_options) - 1  # Default: Todo o período
-        )
-        
-        if filter_options[selected_filter] is not None:
-            start_date, end_date = filter_options[selected_filter]
-            # Ajustar datas para não exceder os limites dos dados
-            start_date = max(start_date, min_date)
-            end_date = min(end_date, max_date)
-        else:
-            # Filtro personalizado
-            date_range = st.sidebar.date_input(
-                "Período personalizado:",
-                value=(min_date, max_date),
-                min_value=min_date,
-                max_value=max_date
-            )
-            if len(date_range) == 2:
-                start_date, end_date = date_range
-            else:
-                start_date, end_date = min_date, max_date
-        
-        # Mostrar período selecionado
-        st.sidebar.info(f"📅 **Período ativo:**\n{start_date.strftime('%d/%m/%Y')} até {end_date.strftime('%d/%m/%Y')}")
-        
-        # Aplicar filtros
-        messages_filtered = messages[
-            (messages['date'] >= start_date) & 
-            (messages['date'] <= end_date)
-        ]
-        sessions_plugins_filtered = sessions_plugins[
-            (sessions_plugins['date'] >= start_date) & 
-            (sessions_plugins['date'] <= end_date)
-        ] if not sessions_plugins.empty and 'date' in sessions_plugins.columns else sessions_plugins
-    else:
-        messages_filtered = messages
-        sessions_plugins_filtered = sessions_plugins
-    
-    # Métricas principais
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        total_messages = len(messages_filtered)
-        st.metric("Total de Mensagens", f"{total_messages:,}")
-    
-    with col2:
-        if not messages_filtered.empty and 'sessionID' in messages_filtered.columns:
-            unique_sessions = messages_filtered['sessionID'].nunique()
-            st.metric("Sessões Únicas", f"{unique_sessions:,}")
-        else:
-            st.metric("Sessões Únicas", "N/A")
-    
-    with col3:
-        if not messages_filtered.empty:
-            inbound_messages = len(messages_filtered[messages_filtered['messageDirection'] == 'inbound'])
-            st.metric("Mensagens Recebidas", f"{inbound_messages:,}")
-        else:
-            st.metric("Mensagens Recebidas", "N/A")
-    
-    with col4:
-        if not messages_filtered.empty and 'contactID' in messages_filtered.columns:
-            unique_contacts = messages_filtered['contactID'].nunique()
-            st.metric("Contatos Únicos", f"{unique_contacts:,}")
-        else:
-            st.metric("Contatos Únicos", "N/A")
     
     # Análise Sindicompany como conteúdo principal
     st.header("🏢 Análise Sindicompany")
