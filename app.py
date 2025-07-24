@@ -93,34 +93,109 @@ def main():
         st.error("Não foi possível carregar os dados. Verifique se os arquivos CSV estão no diretório 'data/'")
         return
     
+    # Sidebar com filtros de data para Sindicompany
+    st.sidebar.header("📅 Filtros")
+    
+    # Filtro de data baseado nos dados Sindicompany
+    if not sindicompany.empty and 'createdAt' in sindicompany.columns:
+        min_date = sindicompany['createdAt'].min().date()
+        max_date = sindicompany['createdAt'].max().date()
+        today = datetime.now().date()
+        
+        # Filtros predefinidos
+        filter_options = {
+            "Todo o período": (min_date, max_date),
+            "Hoje": (today, today),
+            "Ontem": (today - timedelta(days=1), today - timedelta(days=1)),
+            "Últimos 7 dias": (today - timedelta(days=6), today),
+            "Esta semana": (today - timedelta(days=today.weekday()), today),
+            "Semana passada": (today - timedelta(days=today.weekday() + 7), today - timedelta(days=today.weekday() + 1)),
+            "Últimos 30 dias": (today - timedelta(days=29), today),
+            "Este mês": (today.replace(day=1), today),
+            "Mês passado": ((today.replace(day=1) - timedelta(days=1)).replace(day=1), today.replace(day=1) - timedelta(days=1)),
+            "Últimos 90 dias": (today - timedelta(days=89), today),
+            "Personalizado": None
+        }
+        
+        selected_filter = st.sidebar.selectbox(
+            "📅 Período:",
+            options=list(filter_options.keys()),
+            index=0  # Default: Todo o período
+        )
+        
+        if filter_options[selected_filter] is not None:
+            start_date, end_date = filter_options[selected_filter]
+            # Ajustar datas para não exceder os limites dos dados
+            start_date = max(start_date, min_date)
+            end_date = min(end_date, max_date)
+        else:
+            # Filtro personalizado
+            st.sidebar.markdown("**Período personalizado:**")
+            date_range = st.sidebar.date_input(
+                "Selecione o período:",
+                value=(min_date, max_date),
+                min_value=min_date,
+                max_value=max_date
+            )
+            if len(date_range) == 2:
+                start_date, end_date = date_range
+            else:
+                start_date, end_date = min_date, max_date
+        
+        # Mostrar período selecionado
+        st.sidebar.info(f"📅 **Período ativo:**\n{start_date.strftime('%d/%m/%Y')} até {end_date.strftime('%d/%m/%Y')}")
+        
+        # Aplicar filtro aos dados Sindicompany
+        sindicompany_filtered = sindicompany[
+            (sindicompany['date'] >= start_date) & 
+            (sindicompany['date'] <= end_date)
+        ]
+        
+        # Mostrar estatísticas do filtro
+        total_sessions_original = len(sindicompany)
+        total_sessions_filtered = len(sindicompany_filtered)
+        
+        if total_sessions_filtered != total_sessions_original:
+            st.sidebar.metric(
+                "Sessões no período",
+                f"{total_sessions_filtered:,}",
+                delta=f"{total_sessions_filtered - total_sessions_original:,}"
+            )
+        else:
+            st.sidebar.metric("Total de Sessões", f"{total_sessions_filtered:,}")
+            
+    else:
+        sindicompany_filtered = sindicompany
+        st.sidebar.info("📋 Filtros não disponíveis - dados de data não encontrados")
+    
     # Análise Sindicompany como conteúdo principal
     st.header("🏢 Análise Sindicompany")
     
-    if not sindicompany.empty:
+    if not sindicompany_filtered.empty:
         # Métricas principais Sindicompany
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            total_sessions_sindi = len(sindicompany)
+            total_sessions_sindi = len(sindicompany_filtered)
             st.metric("Total de Sessões", f"{total_sessions_sindi:,}")
         
         with col2:
-            if 'contactID' in sindicompany.columns:
-                unique_contacts_sindi = sindicompany['contactID'].nunique()
+            if 'contactID' in sindicompany_filtered.columns:
+                unique_contacts_sindi = sindicompany_filtered['contactID'].nunique()
                 st.metric("Contatos Únicos", f"{unique_contacts_sindi:,}")
             else:
                 st.metric("Contatos Únicos", "N/A")
         
         with col3:
-            if 'sessionRatingStars' in sindicompany.columns:
-                avg_rating = sindicompany['sessionRatingStars'].mean()
+            if 'sessionRatingStars' in sindicompany_filtered.columns:
+                avg_rating = sindicompany_filtered['sessionRatingStars'].mean()
                 st.metric("Avaliação Média", f"{avg_rating:.1f}⭐" if avg_rating > 0 else "N/A")
             else:
                 st.metric("Avaliação Média", "N/A")
         
         with col4:
-            if '__sessionDuration' in sindicompany.columns:
-                avg_duration = sindicompany['__sessionDuration'].mean() / 60  # converter para minutos
+            if '__sessionDuration' in sindicompany_filtered.columns:
+                avg_duration = sindicompany_filtered['__sessionDuration'].mean() / 60  # converter para minutos
                 st.metric("Duração Média", f"{avg_duration:.1f} min")
             else:
                 st.metric("Duração Média", "N/A")
@@ -130,8 +205,8 @@ def main():
         
         with col1:
             # Sessões por dia
-            if 'date' in sindicompany.columns:
-                daily_sessions_sindi = sindicompany.groupby('date').size().reset_index(name='count')
+            if 'date' in sindicompany_filtered.columns:
+                daily_sessions_sindi = sindicompany_filtered.groupby('date').size().reset_index(name='count')
                 fig_daily_sindi = px.line(
                     daily_sessions_sindi, 
                     x='date', 
@@ -146,8 +221,8 @@ def main():
         
         with col2:
             # Motivos de fechamento
-            if 'closeMotive' in sindicompany.columns:
-                close_motives = sindicompany['closeMotive'].value_counts()
+            if 'closeMotive' in sindicompany_filtered.columns:
+                close_motives = sindicompany_filtered['closeMotive'].value_counts()
                 fig_motives = px.pie(
                     values=close_motives.values,
                     names=close_motives.index,
@@ -159,11 +234,11 @@ def main():
                 st.info("Dados de motivos de fechamento não disponíveis")
         
         # Análise de operadores
-        if 'pluginConnectionLabel' in sindicompany.columns:
+        if 'pluginConnectionLabel' in sindicompany_filtered.columns:
             st.subheader("👥 Operadores Sindicompany")
             
             # Contar sessões por operador
-            operator_sessions = sindicompany.groupby('pluginConnectionLabel').agg({
+            operator_sessions = sindicompany_filtered.groupby('pluginConnectionLabel').agg({
                 'sessionID': 'count',
                 '__sessionDuration': 'mean',
                 'sessionRatingStars': 'mean',
@@ -192,14 +267,14 @@ def main():
                 st.plotly_chart(fig_operators, use_container_width=True)
         
         # Análise temporal detalhada
-        if 'hour' in sindicompany.columns:
+        if 'hour' in sindicompany_filtered.columns:
             st.subheader("⏰ Análise Temporal")
             
             col1, col2 = st.columns(2)
             
             with col1:
                 # Sessões por hora
-                hourly_sessions_sindi = sindicompany.groupby('hour').size().reset_index(name='count')
+                hourly_sessions_sindi = sindicompany_filtered.groupby('hour').size().reset_index(name='count')
                 fig_hourly_sindi = px.bar(
                     hourly_sessions_sindi,
                     x='hour',
@@ -212,8 +287,8 @@ def main():
             
             with col2:
                 # Sessões por dia da semana
-                if 'weekday' in sindicompany.columns:
-                    weekday_sessions_sindi = sindicompany.groupby('weekday').size().reindex([
+                if 'weekday' in sindicompany_filtered.columns:
+                    weekday_sessions_sindi = sindicompany_filtered.groupby('weekday').size().reindex([
                         'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
                     ]).reset_index(name='count')
                     weekday_sessions_sindi['weekday_pt'] = weekday_sessions_sindi['weekday'].map({
