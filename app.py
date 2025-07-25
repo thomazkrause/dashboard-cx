@@ -245,9 +245,9 @@ def main():
             else:
                 st.info("Dados de hora não disponíveis")
         
-        # Análise de sindícos
+        # Análise de síndicos
         if 'pluginConnectionLabel' in sindicompany_filtered.columns:
-            st.subheader("👥 Sindícos Sindicompany")
+            st.subheader("👥 Síndicos Sindicompany")
             
             # Contar sessões por síndico incluindo tempo de espera
             operator_sessions = sindicompany_filtered.groupby('pluginConnectionLabel').agg({
@@ -272,7 +272,7 @@ def main():
             operator_sessions.columns = ['Total de Sessões', 'Duração Média', 'Tempo de Espera Médio', 'Mensagens Média']
             operator_sessions = operator_sessions.sort_values('Total de Sessões', ascending=False)
             
-            # Gráfico de pizza dos sindícos
+            # Gráfico de pizza dos síndicos
             if len(operator_sessions) > 0:
                 fig_operators = px.pie(
                     values=operator_sessions['Total de Sessões'],
@@ -282,8 +282,8 @@ def main():
                 fig_operators.update_layout(height=400)
                 st.plotly_chart(fig_operators, use_container_width=True)
             
-            # Tabela de sindícos em linha separada
-            st.markdown("**Detalhes dos Sindícos:**")
+            # Tabela de síndicos em linha separada
+            st.markdown("**Detalhes dos Síndicos:**")
             
             # Configurar formatação da tabela com alinhamento à direita para colunas numéricas
             styled_table = operator_sessions.style.set_properties(**{
