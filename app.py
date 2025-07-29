@@ -18,88 +18,67 @@ st.set_page_config(
 # Função para carregar dados com otimizações para deploy
 @st.cache_data(ttl=3600)  # Cache por 1 hora
 def load_data():
-    """Carrega e processa os dados dos arquivos CSV"""
+    """Carrega e processa os dados do arquivo CSV Sindicompany"""
     try:
-        # Carregar mensagens
-        messages_file = "data/2025-07-20T11_47_45+00_00_wa7m.csv"
-        if os.path.exists(messages_file):
-            messages = pd.read_csv(messages_file, low_memory=False)
-            # Converter datas com formato ISO8601
-            messages['createdAt'] = pd.to_datetime(messages['createdAt'], format='ISO8601')
-            messages['updatedAt'] = pd.to_datetime(messages['updatedAt'], format='ISO8601')
-            # Adicionar colunas calculadas
-            messages['date'] = messages['createdAt'].dt.date
-            messages['hour'] = messages['createdAt'].dt.hour
-            messages['weekday'] = messages['createdAt'].dt.day_name()
-        else:
-            messages = pd.DataFrame()
-        
-        # Carregar sessões com plugins para pluginConnectionLabel
-        sessions_plugins_file = "data/2025-07-20T11_48_28+00_00_ry7w.csv"
-        if os.path.exists(sessions_plugins_file):
-            sessions_plugins = pd.read_csv(sessions_plugins_file, low_memory=False)
-            # Converter datas com formato ISO8601
-            date_columns = ['queuedAt', 'manualAt', 'closedAt', 'createdAt', 'updatedAt']
-            for col in date_columns:
-                if col in sessions_plugins.columns:
-                    sessions_plugins[col] = pd.to_datetime(sessions_plugins[col], format='ISO8601', errors='coerce')
-            
-            # Adicionar coluna de data
-            if 'createdAt' in sessions_plugins.columns:
-                sessions_plugins['date'] = sessions_plugins['createdAt'].dt.date
-                sessions_plugins['hour'] = sessions_plugins['createdAt'].dt.hour
-        else:
-            sessions_plugins = pd.DataFrame()
-        
-        # Carregar dados Sindicompany
-        sindicompany_file = "data/[ Talqui ] Sindicompany - Data_Julho_15-22.csv"
+        # Carregar dados Sindicompany - arquivo principal V3
+        sindicompany_file = "data/[ Talqui ] Sindicompany - Data_V3_Julho_20_26.csv"
         if os.path.exists(sindicompany_file):
-            sindicompany = pd.read_csv(sindicompany_file, low_memory=False)
-            # Converter datas
+            data = pd.read_csv(sindicompany_file, low_memory=False)
+            
+            # Converter datas - formato "2025-06-01 1:09:48"
             date_columns = ['queuedAt', 'manualAt', 'closedAt', 'createdAt', 'updatedAt', 'sessionRatingAt']
             for col in date_columns:
-                if col in sindicompany.columns:
-                    sindicompany[col] = pd.to_datetime(sindicompany[col], errors='coerce')
+                if col in data.columns:
+                    data[col] = pd.to_datetime(data[col], errors='coerce')
             
-            # Adicionar colunas derivadas
-            if 'createdAt' in sindicompany.columns:
-                sindicompany['date'] = sindicompany['createdAt'].dt.date
-                sindicompany['hour'] = sindicompany['createdAt'].dt.hour
-                sindicompany['weekday'] = sindicompany['createdAt'].dt.day_name()
+            # Adicionar colunas derivadas baseadas em createdAt
+            if 'createdAt' in data.columns and not data['createdAt'].isna().all():
+                data['date'] = data['createdAt'].dt.date
+                data['hour'] = data['createdAt'].dt.hour
+                data['weekday'] = data['createdAt'].dt.day_name()
+            
+            # Processar durações (converter de segundos para minutos)
+            duration_columns = ['__sessionDuration', '__sessionQueueDuration', '__sessionManualDuration']
+            for col in duration_columns:
+                if col in data.columns:
+                    data[f'{col}_minutes'] = pd.to_numeric(data[col], errors='coerce') / 60
+            
+            # Processar ratings
+            if 'sessionRatingStars' in data.columns:
+                data['sessionRatingStars'] = pd.to_numeric(data['sessionRatingStars'], errors='coerce')
+            
+            # Processar contadores de mensagens
+            if '__sessionMessagesCount' in data.columns:
+                data['__sessionMessagesCount'] = pd.to_numeric(data['__sessionMessagesCount'], errors='coerce')
+            
+            return data
         else:
-            sindicompany = pd.DataFrame()
-        
-        return messages, sessions_plugins, sindicompany
+            st.error(f"Arquivo não encontrado: {sindicompany_file}")
+            return pd.DataFrame()
     
     except Exception as e:
         st.error(f"Erro ao carregar dados: {str(e)}")
-        st.info("💡 **Para usar no Streamlit Cloud**: Faça upload dos arquivos CSV para o repositório na pasta 'data/'")
-        st.markdown("""
-        **Arquivos necessários:**
-        - `data/2025-07-20T11_47_45+00_00_wa7m.csv` (mensagens)
-        - `data/2025-07-20T11_48_28+00_00_ry7w.csv` (sessões com plugins)
-        - `data/[ Talqui ] Sindicompany - Data_Julho_15-22.csv` (dados Sindicompany)
-        """)
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        st.info("💡 **Arquivo necessário**: `data/[ Talqui ] Sindicompany - Data_V3_Julho_20_26.csv`")
+        return pd.DataFrame()
 
 def main():
     st.title("📊 Dashboard CX - Talqui")
     
     # Carregar dados
     with st.spinner("Carregando dados..."):
-        messages, sessions_plugins, sindicompany = load_data()
+        data = load_data()
     
-    if messages.empty and sindicompany.empty:
-        st.error("Não foi possível carregar os dados. Verifique se os arquivos CSV estão no diretório 'data/'")
+    if data.empty:
+        st.error("Não foi possível carregar os dados. Verifique se o arquivo CSV está no diretório 'data/'")
         return
     
-    # Sidebar com filtros de data para Sindicompany
+    # Sidebar com filtros de data
     st.sidebar.header("📅 Filtros")
     
-    # Filtro de data baseado nos dados Sindicompany
-    if not sindicompany.empty and 'createdAt' in sindicompany.columns:
-        min_date = sindicompany['createdAt'].min().date()
-        max_date = sindicompany['createdAt'].max().date()
+    # Filtro de data baseado nos dados
+    if not data.empty and 'createdAt' in data.columns:
+        min_date = data['createdAt'].min().date()
+        max_date = data['createdAt'].max().date()
         today = datetime.now().date()
         
         # Filtros predefinidos
@@ -145,15 +124,39 @@ def main():
         # Mostrar período selecionado
         st.sidebar.info(f"📅 **Período ativo:**\n{start_date.strftime('%d/%m/%Y')} até {end_date.strftime('%d/%m/%Y')}")
         
-        # Aplicar filtro aos dados Sindicompany
-        sindicompany_filtered = sindicompany[
-            (sindicompany['date'] >= start_date) & 
-            (sindicompany['date'] <= end_date)
+        # Aplicar filtro de data primeiro
+        data_filtered = data[
+            (data['date'] >= start_date) & 
+            (data['date'] <= end_date)
         ]
         
+        # Filtro por Operador/Síndico (pluginConnectionLabel)
+        if 'pluginConnectionLabel' in data_filtered.columns:
+            st.sidebar.header("👤 Filtro por Operador")
+            
+            # Obter valores únicos da coluna pluginConnectionLabel
+            unique_operators = sorted(data_filtered['pluginConnectionLabel'].dropna().unique())
+            
+            # Adicionar opção "Todos" no início
+            operator_options = ["Todos"] + unique_operators
+            
+            # Selectbox para escolher o operador
+            selected_operator = st.sidebar.selectbox(
+                "🎯 Selecionar Operador:",
+                options=operator_options,
+                index=0  # Default: Todos
+            )
+            
+            # Aplicar filtro por operador se não for "Todos"
+            if selected_operator != "Todos":
+                data_filtered = data_filtered[
+                    data_filtered['pluginConnectionLabel'] == selected_operator
+                ]
+                st.sidebar.info(f"👤 **Operador ativo:** {selected_operator}")
+        
         # Mostrar estatísticas do filtro
-        total_sessions_original = len(sindicompany)
-        total_sessions_filtered = len(sindicompany_filtered)
+        total_sessions_original = len(data)
+        total_sessions_filtered = len(data_filtered)
         
         if total_sessions_filtered != total_sessions_original:
             st.sidebar.metric(
@@ -165,30 +168,54 @@ def main():
             st.sidebar.metric("Total de Sessões", f"{total_sessions_filtered:,}")
             
     else:
-        sindicompany_filtered = sindicompany
-        st.sidebar.info("📋 Filtros não disponíveis - dados de data não encontrados")
+        data_filtered = data
+        st.sidebar.info("📋 Filtros de data não disponíveis - dados de data não encontrados")
+        
+        # Ainda assim, adicionar filtro por operador se disponível
+        if 'pluginConnectionLabel' in data.columns:
+            st.sidebar.header("👤 Filtro por Operador")
+            
+            # Obter valores únicos da coluna pluginConnectionLabel
+            unique_operators = sorted(data['pluginConnectionLabel'].dropna().unique())
+            
+            # Adicionar opção "Todos" no início
+            operator_options = ["Todos"] + unique_operators
+            
+            # Selectbox para escolher o operador
+            selected_operator = st.sidebar.selectbox(
+                "🎯 Selecionar Operador:",
+                options=operator_options,
+                index=0  # Default: Todos
+            )
+            
+            # Aplicar filtro por operador se não for "Todos"
+            if selected_operator != "Todos":
+                data_filtered = data_filtered[
+                    data_filtered['pluginConnectionLabel'] == selected_operator
+                ]
+                st.sidebar.info(f"👤 **Operador ativo:** {selected_operator}")
     
     # Análise Sindicompany como conteúdo principal
     st.header("🏢 Análise Sindicompany")
     
-    if not sindicompany_filtered.empty:
+    if not data_filtered.empty:
         # Métricas principais Sindicompany
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
-            total_sessions_sindi = len(sindicompany_filtered)
+            total_sessions_sindi = len(data_filtered)
             st.metric("Total de Sessões", f"{total_sessions_sindi:,}")
         
         with col2:
-            if 'contactID' in sindicompany_filtered.columns:
-                unique_contacts_sindi = sindicompany_filtered['contactID'].nunique()
+            if 'contactID' in data_filtered.columns:
+                unique_contacts_sindi = data_filtered['contactID'].nunique()
                 st.metric("Contatos Únicos", f"{unique_contacts_sindi:,}")
             else:
                 st.metric("Contatos Únicos", "N/A")
         
         with col3:
-            if '__sessionDuration' in sindicompany_filtered.columns:
-                avg_duration_seconds = sindicompany_filtered['__sessionDuration'].mean()
+            if '__sessionDuration' in data_filtered.columns:
+                avg_duration_seconds = data_filtered['__sessionDuration'].mean()
                 hours = int(avg_duration_seconds // 3600)
                 minutes = int((avg_duration_seconds % 3600) // 60)
                 seconds = int(avg_duration_seconds % 60)
@@ -198,8 +225,8 @@ def main():
         
         with col4:
             # Calcular tempo de espera usando __sessionQueueDuration
-            if '__sessionQueueDuration' in sindicompany_filtered.columns:
-                avg_queue_duration = sindicompany_filtered['__sessionQueueDuration'].mean()
+            if '__sessionQueueDuration' in data_filtered.columns:
+                avg_queue_duration = data_filtered['__sessionQueueDuration'].mean()
                 if pd.notna(avg_queue_duration) and avg_queue_duration > 0:
                     hours = int(avg_queue_duration // 3600)
                     minutes = int((avg_queue_duration % 3600) // 60)
@@ -210,13 +237,27 @@ def main():
             else:
                 st.metric("Tempo de Espera Médio", "N/A")
         
+        with col5:
+            # Calcular indicador de Inatividade
+            if 'closeMotive' in data_filtered.columns:
+                inactivity_count = len(data_filtered[data_filtered['closeMotive'] == 'INACTIVITY'])
+                total_sessions = len(data_filtered)
+                inactivity_percentage = (inactivity_count / total_sessions * 100) if total_sessions > 0 else 0
+                st.metric(
+                    "Inatividade", 
+                    f"{inactivity_count:,}", 
+                    delta=f"{inactivity_percentage:.1f}%"
+                )
+            else:
+                st.metric("Inatividade", "N/A")
+        
         # Gráficos Sindicompany
         col1, col2 = st.columns(2)
         
         with col1:
             # Sessões por dia
-            if 'date' in sindicompany_filtered.columns:
-                daily_sessions_sindi = sindicompany_filtered.groupby('date').size().reset_index(name='count')
+            if 'date' in data_filtered.columns:
+                daily_sessions_sindi = data_filtered.groupby('date').size().reset_index(name='count')
                 fig_daily_sindi = px.bar(
                     daily_sessions_sindi, 
                     x='date', 
@@ -231,8 +272,8 @@ def main():
         
         with col2:
             # Sessões por hora do dia
-            if 'hour' in sindicompany_filtered.columns:
-                hourly_sessions_sindi = sindicompany_filtered.groupby('hour').size().reset_index(name='count')
+            if 'hour' in data_filtered.columns:
+                hourly_sessions_sindi = data_filtered.groupby('hour').size().reset_index(name='count')
                 fig_hourly_sindi = px.bar(
                     hourly_sessions_sindi,
                     x='hour',
@@ -246,11 +287,11 @@ def main():
                 st.info("Dados de hora não disponíveis")
         
         # Análise de síndicos
-        if 'pluginConnectionLabel' in sindicompany_filtered.columns:
+        if 'pluginConnectionLabel' in data_filtered.columns:
             st.subheader("👥 Síndicos Sindicompany")
             
             # Contar sessões por síndico incluindo tempo de espera
-            operator_sessions = sindicompany_filtered.groupby('pluginConnectionLabel').agg({
+            operator_sessions = data_filtered.groupby('pluginConnectionLabel').agg({
                 'sessionID': 'count',
                 '__sessionDuration': 'mean',
                 '__sessionQueueDuration': 'mean',
@@ -300,11 +341,11 @@ def main():
             )
         
         # Nova tabela: Sessões por dia do mês por síndico
-        if 'date' in sindicompany_filtered.columns and 'pluginConnectionLabel' in sindicompany_filtered.columns:
+        if 'date' in data_filtered.columns and 'pluginConnectionLabel' in data_filtered.columns:
             st.subheader("📅 Sessões por Dia do Mês por Síndico")
             
             # Criar cópia dos dados para evitar warnings
-            temp_data = sindicompany_filtered.copy()
+            temp_data = data_filtered.copy()
             temp_data['day'] = temp_data['date'].apply(lambda x: x.day)
             
             daily_operator_sessions = temp_data.groupby(['day', 'pluginConnectionLabel']).size().reset_index(name='sessions')
@@ -333,10 +374,10 @@ def main():
             st.caption(f"📊 Tabela mostra o número de sessões por dia do mês para cada síndico.")
         
         # Análise por dia da semana
-        if 'weekday' in sindicompany_filtered.columns:
+        if 'weekday' in data_filtered.columns:
             st.subheader("📅 Sessões por Dia da Semana")
             
-            weekday_sessions_sindi = sindicompany_filtered.groupby('weekday').size().reindex([
+            weekday_sessions_sindi = data_filtered.groupby('weekday').size().reindex([
                 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
             ]).reset_index(name='count')
             weekday_sessions_sindi['weekday_pt'] = weekday_sessions_sindi['weekday'].map({
